@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h> 
 #include <ctype.h>
-#import <string.h>
+#include <string.h>
 
 typedef enum { false, true } bool;
 
@@ -141,13 +141,11 @@ void doIf() {
 	char bak[1024];
 	strcpy(bak, string);
 
-	printf("BEF string is %s bak is %s", string, bak);
-
 	match('i');
 	condition();
 
 	char branch[1024];
-	snprintf(branch, sizeof(branch), "BEQ %s", string);
+	snprintf(branch, sizeof(branch), "BEQ %s", bak);
 	emitLn(branch);
 
 	block();
