@@ -115,14 +115,25 @@ void postLabel(const char* label) {
 }
 
 void doIf();
+void doWhile();
+void doLoop();
+void doRepeat();
 
 //recognize and translate a statement block
 void block() {
-	while (look != 'e') {
+	while (look != 'e' && look != 'l' && look != 'u') {
 		if (look == 'i') {
 			doIf();
 		}
-		//else if (look == 'o') {
+		else if (look == 'w') {
+			doWhile();
+		}
+		else if (look == 'p') {
+			doLoop();
+		}
+		else if (look == 'r') {
+			doRepeat();
+		}
 		else {
 			other();
 		}
@@ -137,20 +148,107 @@ void condition() {
 
 //recognize and translate an if construct
 void doIf() {
-	const char* string = newLabel();
-	char bak[1024];
-	strcpy(bak, string);
-
+	const char* constLab1 = newLabel();
+	char lab1[1024];
+	strcpy(lab1, constLab1);
+	
+	//copy of lab1
+	char* lab2 = malloc(sizeof(char) * strlen(lab1) + 1);
+	strcpy(lab2, lab1);
+	
 	match('i');
 	condition();
-
+	
 	char branch[1024];
-	snprintf(branch, sizeof(branch), "BEQ %s", bak);
+	snprintf(branch, sizeof(branch), "BEQ %s", lab1);
 	emitLn(branch);
+	
+	block();
+	
+	//handle 'else'
+	if (look == 'l') {
+		match('l');
+		
+		const char* tmp = newLabel();
+		strcpy(lab2, tmp);
+		
+		char elseBranch[1024];
+		snprintf(elseBranch, sizeof(elseBranch), "BRA %s", lab2);
+		emitLn(elseBranch);
+		
+		postLabel(lab1);
+		block();
+	}
+	
+	match('e');
+	postLabel(lab2);
+}
 
+//parse and translate a while statement 
+void doWhile() {
+	match('w');
+	
+	const char* constLab1 = newLabel();
+	char lab1[1024];
+	strcpy(lab1, constLab1);
+	const char* constLab2 = newLabel();
+	char lab2[1024];
+	strcpy(lab2, constLab2);
+	
+	postLabel(lab1);
+	condition();
+	
+	char beq[1024];
+	snprintf(beq, sizeof(beq), "BEQ %s", lab2);
+	emitLn(beq);
+	
+	block();
+	
+	match('e');
+	
+	char bra[1024];
+	snprintf(bra, sizeof(bra), "BRA %s", lab1);
+	emitLn(bra);
+	
+	postLabel(lab2);
+}
+
+//parse and translate a loop statement 
+void doLoop() {
+	match('p');
+	
+	const char* constLab = newLabel();
+	char lab[1024];
+	strcpy(lab, constLab);
+	
+	postLabel(lab);
+	
 	block();
 	match('e');
-	postLabel(bak);
+	
+	char bra[1024];
+	snprintf(bra, sizeof(bra), "BRA %s", lab);
+	emitLn(bra);
+}
+
+//parse and translate a repeat statement 
+void doRepeat() {
+	match('r');
+	
+	const char* constLab = newLabel();
+	char lab[1024];
+	strcpy(lab, constLab);
+	
+	postLab(lab);
+	
+	block();
+	
+	match('u');
+	condition();
+	
+	char beq[1024];
+	snprintf(beq, sizeof(beq), "BEQ %s", lab);
+	emitLn(lab);
 }
 
 //parse and translate a program
