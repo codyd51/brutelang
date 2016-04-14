@@ -58,6 +58,14 @@ static Token gettok() {
 			token.type = tok_return;
 			return token;
 		}
+		else if (token.strVal == "if") {
+			token.type = tok_if;
+			return token;
+		}
+		else if (token.strVal == "while") {
+			token.type = tok_while;
+			return token;
+		}
 		token.type = tok_identifier;
 		return token;
 	}
@@ -328,13 +336,68 @@ public:
 	}
 };
 
-//statement ::= <assignment> | <prototype> ';'
+//condition ::= TODO flesh out
+class Condition : public Node {
+public:
+	Condition() {}
+
+	void prettyPrint(int tabCount) {
+		Node::prettyPrint(tabCount);
+
+		cout << "[CONDITION ]";
+	}
+};
+
+//if ::= 'if' '(' <condition> ')' '{' [<statement>] '}'
+class Statement;
+class If : public Node {
+public:
+	unique_ptr<Condition> condition;
+	vector<unique_ptr<Node> > statementList;
+
+	If(unique_ptr<Condition> condition, vector<unique_ptr<Node> > statementList) : condition(move(condition)), statementList(move(statementList)) {}
+
+	void prettyPrint(int tabCount) {
+		Node::prettyPrint(tabCount);
+
+		cout << "[IF ";
+		condition->prettyPrint(tabCount+1);
+		for (auto const& statement : statementList) {
+			statement->prettyPrint(tabCount+1);
+		}
+		cout << "]";
+	}
+};
+
+//while ::= 'while' '(' <condition> ')' '{' [<statement>] '}'
+class While : public Node {
+public:
+	unique_ptr<Condition> condition;
+	vector<unique_ptr<Node> > statementList;
+
+	While(unique_ptr<Condition> condition, vector<unique_ptr<Node> > statementList) : condition(move(condition)), statementList(move(statementList)) {}
+
+	void prettyPrint(int tabCount) {
+		Node::prettyPrint(tabCount);
+
+		cout << "[WHILE ";
+		condition->prettyPrint(tabCount+1);
+		for (auto const& statement : statementList) {
+			statement->prettyPrint(tabCount+1);
+		}
+		cout << "]";
+	}
+};
+
+//statement ::= <assignment> | <prototype> | <if> | <while> ';'
 class Statement : public Node {
 public:
 	unique_ptr<Node> node;
 
 	Statement(unique_ptr<Assignment> assignment) : node(move(assignment)) {}
 	Statement(unique_ptr<Prototype> proto) : node(move(proto)) {}
+	Statement(unique_ptr<If> ifStmt) : node(move(ifStmt)) {}
+	Statement(unique_ptr<While> whileStmt) : node(move(whileStmt)) {}
 
 	void prettyPrint(int tabCount) {
 		Node::prettyPrint(tabCount);
@@ -358,58 +421,6 @@ public:
 
 		cout << "[FUNCTION ";
 		proto->prettyPrint(tabCount+1);
-		for (auto const& statement : statementList) {
-			statement->prettyPrint(tabCount+1);
-		}
-		cout << "]";
-	}
-};
-
-//condition ::= TODO flesh out
-class Condition : public Node {
-public:
-	Condition() {}
-
-	void prettyPrint(int tabCount) {
-		Node::prettyPrint(tabCount);
-
-		cout << "[CONDITION ]";
-	}
-};
-
-//if ::= 'if' '(' <condition> ')' '{' [<statement>] '}'
-class If : public Node {
-public:
-	unique_ptr<Condition> condition;
-	vector<unique_ptr<Statement> > statementList;
-
-	If(unique_ptr<Condition> condition, vector<unique_ptr<Statement> > statementList) : condition(move(condition)), statementList(move(statementList)) {}
-
-	void prettyPrint(int tabCount) {
-		Node::prettyPrint(tabCount);
-
-		cout << "[IF ";
-		condition->prettyPrint(tabCount+1);
-		for (auto const& statement : statementList) {
-			statement->prettyPrint(tabCount+1);
-		}
-		cout << "]";
-	}
-};
-
-//while ::= 'while' '(' <condition> ')' '{' [<statement>] '}'
-class While : public Node {
-public:
-	unique_ptr<Condition> condition;
-	vector<unique_ptr<Statement> > statementList;
-
-	While(unique_ptr<Condition> condition, vector<unique_ptr<Statement> > statementList) : condition(move(condition)), statementList(move(statementList)) {}
-
-	void prettyPrint(int tabCount) {
-		Node::prettyPrint(tabCount);
-
-		cout << "[WHILE ";
-		condition->prettyPrint(tabCount+1);
 		for (auto const& statement : statementList) {
 			statement->prettyPrint(tabCount+1);
 		}
@@ -532,8 +543,60 @@ static unique_ptr<Assignment> parseAssignment() {
 	return unique_ptr<Assignment>(new Assignment(move(lhs), move(rhs)));
 }
 
-//statement ::= <assignment> | <prototype>
+static unique_ptr<Condition> parseCondition() {
+	getToken();
+	return unique_ptr<Condition>(new Condition());
+}
+
+static unique_ptr<Statement> parseStatement();
+
+//if ::= 'if' '(' <condition> ')' '{' [<statement>] '}'
+static unique_ptr<If> parseIf() {
+	match("if");
+	match("(");
+	unique_ptr<Condition> condition (parseCondition());
+	match(")");
+	match("{");
+
+	vector<unique_ptr<Node> > statementList;
+	while (curTok.rawStrVal != "}") {
+		statementList.push_back(parseStatement());
+	}
+
+	match("}");
+
+	return unique_ptr<If>(new If(move(condition), move(statementList)));
+}
+
+//while ::= 'while' '(' <condition> ')' '{' [<statement>] '}'
+static unique_ptr<While> parseWhile() {
+	match("while");
+	match("(");
+	unique_ptr<Condition> condition (parseCondition());
+	match(")");
+	match("{");
+
+	vector<unique_ptr<Node> > statementList;
+	while (curTok.rawStrVal != "}") {
+		statementList.push_back(parseStatement());
+	}
+
+	match("}");
+
+	return unique_ptr<While>(new While(move(condition), move(statementList)));
+}
+
+//statement ::= <assignment> | <prototype> | <if> | <while>
 static unique_ptr<Statement> parseStatement() {
+	//if
+	if (curTok.type == tok_if) {
+		return unique_ptr<Statement>(new Statement(parseIf()));
+	}
+	//while
+	else if (curTok.type == tok_while) {
+		return unique_ptr<Statement>(new Statement(parseWhile()));
+	}
+
 	unique_ptr<Identifier> ident (new Identifier(curTok.strVal));
 	getToken();
 
@@ -573,6 +636,7 @@ static unique_ptr<Function> parseFunction() {
 	unique_ptr<Prototype> proto (parsePrototype());
 
 	match("{");
+
 
 	vector<unique_ptr<Statement> > statementList;
 	while (curTok.rawStrVal != "}") {
