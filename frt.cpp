@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <cstdio>
 #include <map>
 #include <string>
@@ -6,6 +7,7 @@
 #include <vector>
 #include <utility>
 #include <stdlib.h>
+#include <cctype>
 
 using namespace std;
 
