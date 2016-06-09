@@ -8,8 +8,17 @@
 #include <utility>
 #include <stdlib.h>
 #include <cctype>
+/*
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
+*/
 
 using namespace std;
+
+//LEXER
 
 enum TokenType {
 	tok_eof = -1,
@@ -118,13 +127,17 @@ static Token getToken() {
 	return curTok;
 }
 
+void error(string ch) {
+	cout << "Error: " << ch << "." << endl;
+	exit(0);
+}
+
 void expected(string ch) {
-	cout << "Expected " << ch << ".";
+	error("Expected"+ch);
 	exit(0);
 }
 
 void match(string ch) {
-	//cout << "Matching " << curTok.rawStrVal << " to " << ch << "\n";
 	if (curTok.rawStrVal == ch) {
 		getToken();
 	}
@@ -141,16 +154,23 @@ void match(string ch) {
 
 
 
-
+//AST NODES
 
 class Node {
 public:
-	//virtual void prettyPrint() = 0;
 	virtual void prettyPrint(int tabCount) {
 		cout << endl;
 		for (int i = 0; i < tabCount; i++) {
 			cout << "\t";
 		}
+	}
+
+	virtual void codeGen() {
+		error("codeGen must be called on concrete node");
+	};
+
+	virtual void asmGen() {
+		error("asmGen must be called on concrete node");
 	}
 };
 
@@ -166,6 +186,10 @@ public:
 
 		cout << "[IDENTIFIER " << name << "]";
 	}
+
+	void codeGen() {
+		cout << name;
+	}
 };
 
 //number ::= '0-9'
@@ -180,6 +204,10 @@ public:
 		Node::prettyPrint(tabCount);
 
 		cout << "[NUMBER " << value << "]";
+	}
+
+	void codeGen() {
+		cout << value;
 	}
 };
 
@@ -210,7 +238,19 @@ public:
 		}
 		cout << "]";
 	}
+
+	void codeGen() {
+		fnName->codeGen();
+		cout << "(";
+		for (auto const& arg : args) {
+			//TODO Create explicit arglist which outputs type
+			cout << "double ";
+			arg->codeGen();
+		}
+		cout << ")";
+	}
 };
+
 //factor ::= <identifier> | <number> | <prototype>
 class Factor : public Node {
 public:
@@ -232,6 +272,10 @@ public:
 		node->prettyPrint(tabCount+1);
 		cout << "]";
 	}
+
+	void codeGen() {
+		node->codeGen();
+	}
 };
 
 //termop ::= '*' | '/'
@@ -249,6 +293,10 @@ public:
 		Node::prettyPrint(tabCount);
 
 		cout << "[TERMOP " << name << "]";
+	}
+
+	void codeGen() {
+		cout << name;
 	}
 };
 
@@ -273,6 +321,18 @@ public:
 		}
 		cout << "]";
 	}
+
+	void codeGen() {
+		lhs->codeGen();
+		if (op) {
+			op->codeGen();
+			rhs->codeGen();
+		}
+	}
+
+	void asmGen() {
+
+	}
 };
 
 //exprop ::= '+' | '-'
@@ -290,6 +350,10 @@ public:
 		Node::prettyPrint(tabCount);
 
 		cout << "[EXPROP " << name << "]";
+	}
+
+	void codeGen() {
+		cout << name;
 	}
 };
 
@@ -314,6 +378,14 @@ public:
 		}
 		cout << "]";
 	}
+
+	void codeGen() {
+		lhs->codeGen();
+		if (op) {
+			op->codeGen();
+			rhs->codeGen();
+		}
+	}
 };
 
 //assignment ::= <identifier> '=' <expression>
@@ -336,6 +408,13 @@ public:
 		rhs->prettyPrint(tabCount+1);
 		cout << "]";
 	}
+
+	void codeGen() {
+		cout << "double ";
+		lhs->codeGen();
+		cout << " = ";
+		rhs->codeGen();
+	}
 };
 
 //condition ::= TODO flesh out
@@ -347,6 +426,10 @@ public:
 		Node::prettyPrint(tabCount);
 
 		cout << "[CONDITION ]";
+	}
+
+	void codeGen() {
+		cout << "[CONDITION]";
 	}
 };
 
@@ -369,6 +452,16 @@ public:
 		}
 		cout << "]";
 	}
+
+	void codeGen() {
+		cout << "if (";
+		condition->codeGen();
+		cout << ") {" << endl;
+		for (auto const& statement : statementList) {
+			statement->codeGen();
+		}
+		cout << "}";
+	}
 };
 
 //while ::= 'while' '(' <condition> ')' '{' [<statement>] '}'
@@ -389,6 +482,16 @@ public:
 		}
 		cout << "]";
 	}
+
+	void codeGen() {
+		cout << "while (";
+		condition->codeGen();
+		cout << ") {" << endl;
+		for (auto const& statement : statementList) {
+			statement->codeGen();
+		}
+		cout << "}";
+	}
 };
 
 //statement ::= <assignment> | <prototype> | <if> | <while> ';'
@@ -408,15 +511,20 @@ public:
 		node->prettyPrint(tabCount+1);
 		cout << "]";
 	}
+
+	void codeGen() {
+		node->codeGen();
+		cout << ";" << endl;
+	}
 };
 
 //function ::= 'func' <prototype> '{' [<statement>] '}'
 class Function : public Node {
 public:
 	unique_ptr<Prototype> proto;
-	vector<unique_ptr<Statement> > statementList;
+	vector<unique_ptr<Node> > statementList;
 
-	Function(unique_ptr<Prototype> proto, vector<unique_ptr<Statement> > statementList) : proto(move(proto)), statementList(move(statementList)) {}
+	Function(unique_ptr<Prototype> proto, vector<unique_ptr<Node> > statementList) : proto(move(proto)), statementList(move(statementList)) {}
 
 	void prettyPrint(int tabCount) {
 		Node::prettyPrint(tabCount);
@@ -428,7 +536,52 @@ public:
 		}
 		cout << "]";
 	}
+
+	void codeGen() {
+		cout << "double ";
+		proto->codeGen();
+		cout << " {" << endl;
+		for (auto const& statement : statementList) {
+			statement->codeGen();
+		}
+		cout << "}";
+		cout << endl;
+	}
 };
+
+//return ::= 'return' <expression> ';'
+class Return : public Node {
+public:
+	unique_ptr<Expression> expr;
+
+	Return(unique_ptr<Expression> expr) : expr(move(expr)) {}
+
+	void prettyPrint(int tabCount) {
+		Node::prettyPrint(tabCount);
+
+		cout << "[RETURN ";
+		expr->prettyPrint(tabCount+1);
+		cout << "]";
+	}
+
+	void codeGen() {
+		cout << "return ";
+		expr->codeGen();
+		cout << ";" << endl;
+	}
+};
+
+
+
+
+
+
+
+
+
+
+//PARSER
+
 
 static unique_ptr<Identifier> parseIdentifier() {
 	string name = curTok.strVal;
@@ -631,6 +784,17 @@ static unique_ptr<Statement> parseStatement() {
 	return unique_ptr<Statement>(new Statement(move(proto)));		
 }
 
+//return ::= 'return' <expression> ';'
+static unique_ptr<Return> parseReturn() {
+	match("return");
+
+	unique_ptr<Expression> expr = parseExpression();
+
+	match(";");
+
+	return unique_ptr<Return>(new Return(move(expr)));
+}
+
 //function ::= 'func' <prototype> '{' [<statement>] '}'
 static unique_ptr<Function> parseFunction() {
 	match("func");
@@ -640,9 +804,14 @@ static unique_ptr<Function> parseFunction() {
 	match("{");
 
 
-	vector<unique_ptr<Statement> > statementList;
+	vector<unique_ptr<Node> > statementList;
 	while (curTok.rawStrVal != "}") {
-		statementList.push_back(move(parseStatement()));
+		if (curTok.type == tok_return) {
+			statementList.push_back(move(parseReturn()));
+		}
+		else {
+			statementList.push_back(move(parseStatement()));
+		}
 	}
 
 	match("}");
@@ -650,6 +819,61 @@ static unique_ptr<Function> parseFunction() {
 	return unique_ptr<Function>(new Function(move(proto), move(statementList)));
 }
 
+
+
+
+
+
+
+
+
+//IR
+/*
+static unique_ptr<Module> *module;
+staic IRBuilder<> Builder(getGlobalContext());
+static map<string, Value*> namedValues;
+
+Value* errorV(string str) {
+	error(str);
+	return nullptr;
+}
+
+Value* Number::codeGen() {
+	return ConstantFP::get(getGlobalContext(), APFloat(value));
+}
+
+Value* Identifier::codeGen() {
+	//look up this variable in the function
+	Value* v = namedValues[name];
+	if (!v) {
+		errorV("Unknown variable name "+name);
+	}
+	return v;
+}
+
+Value* Expression::codeGen() {
+	Value* L = lhs->codeGen();
+	Value* R = rhs->codeGen();
+	if (!L || !R) {
+		return nullptr;
+	}
+
+	if (op.name == "+") {
+		return Builder.CreateFAdd(L, R, "addtmp");
+	}
+	else if (op.name == "-") {
+		return Builder.CreateFSub(L, R, "subtmp");
+	}
+	else {
+		return errorV("invalid operator");
+	}
+}
+
+Value* Function::codeGen() {
+	//look up name in global module table
+}
+
+*/
 int main() {
 	cout << "ready> ";
 	getToken();
@@ -671,15 +895,34 @@ int main() {
 		}
 	} while (curTok.rawStrVal != "E");
 
-	for (auto tok : tokens) {
-		//cout << "[Token " << tok.rawStrVal << "]" << endl;
-	}
+	cout << endl << endl << "AST: " << endl << endl;
 
 	for (auto const& node : ast) {
 		node->prettyPrint(0);
-		//cout << typeid(node).name() << endl;
+	}
+/*
+	cout << endl << endl << "TRANSPILE: " << endl << endl;
+
+	std::ofstream out("out.cpp");
+    std::streambuf *coutbuf = std::cout.rdbuf(); //save old buf
+    std::cout.rdbuf(out.rdbuf()); //redirect std::cout to out.txt!
+
+    //MAIN code gen
+    cout << "#import <iostream>" << endl;
+	for (auto const& node : ast) {
+		if (!hasFoundFirstFunction) {
+			//if (typeid(node).name()"Prototype") {
+				//unique_ptr<Prototype> proto (node);
+				cout << "found proto " << typeid(node).name() << endl;
+			//}
+		}
+
+
+		node->codeGen();
 	}
 
+	cout << "int main() {" << endl << "	" << "std::cout << dbl" << "(5);" << endl << "}";
+*/
 	return 0;
 }
 
